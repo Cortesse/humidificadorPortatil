@@ -41,6 +41,7 @@ Dependiendo del proyecto, pueden utilizarse herramientas como:
 * Octave / MATLAB
 * Git para control de versiones
 
-## Autor
+## Autores
 
-Agustín
+Agostini, Emiliano
+Cortesse, Agustín
