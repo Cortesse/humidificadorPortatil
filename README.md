@@ -105,6 +105,7 @@ En desarrollo.
 
 ---
 
-# Autor
+# Autores
 
-Agustín
+Agostini, Emiliano
+Cortesse, Agustín
