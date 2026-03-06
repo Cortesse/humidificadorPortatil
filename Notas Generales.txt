@@ -1,0 +1,9 @@
+---------- Diagrama ESP32-C3Mini ----------
+
+https://wiki.icbbuy.com/doku.php?id=developmentboard:esp32-c3mini#schematic
+
+https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32c3/schematic-checklist.html (No es FH4 o FN4)
+
+https://forum.arduino.cc/t/unable-to-program-esp32-c3fh4/1405288
+
+https://esp32.com/viewtopic.php?t=39362
