@@ -2,33 +2,37 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-/* =======================
-   PINES
-   ======================= */
-#define pinADC_BAT   3
+/* =========================================================
+   CONFIGURACIÓN DE HARDWARE (PINES)
+   ========================================================= */
+#define PIN_ADC_BAT   3
 
-#define pinSDA 4
-#define pinSCL 5
+#define PIN_I2C_SDA   4
+#define PIN_I2C_SCL   5
 
-#define pinTTP 2
-#define pinHum 6
+#define PIN_TTP       2
+#define PIN_HUM       6
 
-/* =======================
-   RANGO BATERÍA
-   ======================= */
-float maxBat = 4.05;
-float minBat = 1.55;
+#define PIN_CHRG      7
+#define PIN_STDBY     1
 
-/* =======================
-   OLED
-   ======================= */
-#define SCREEN_WIDTH 128
+/* =========================================================
+   CONFIGURACIÓN DE BATERÍA
+   ========================================================= */
+const float BAT_MAX_VOLT = 4.05;
+const float BAT_MIN_VOLT = 1.55;
+
+/* =========================================================
+   CONFIGURACIÓN OLED
+   ========================================================= */
+#define SCREEN_WIDTH  128
 #define SCREEN_HEIGHT 32
+
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-/* =======================
-   ESTADOS DEL SISTEMA
-   ======================= */
+/* =========================================================
+   ENUMERACIONES
+   ========================================================= */
 enum EstadoSistema {
   EST_READY,
   EST_RUN,
@@ -36,22 +40,40 @@ enum EstadoSistema {
   EST_LOW
 };
 
-/* =======================
-   VARIABLES DE CONTROL
-   ======================= */
-bool ttpAnterior = LOW;
-bool humEncendido = false;
+enum EstadoCarga {
+  CARGA_IDLE,
+  CARGA_CHARGING,
+  CARGA_FULL
+};
 
-/* =======================
-   MEDICIÓN BATERÍA
-   ======================= */
+/* =========================================================
+   VARIABLES GLOBALES
+   ========================================================= */
+bool ttpAnterior   = LOW;
+bool humEncendido  = false;
+
 float vBatFiltrada = 0;
 
+/* =========================================================
+   CAPA HARDWARE
+   ========================================================= */
+EstadoCarga obtenerEstadoCarga() {
+
+  bool chrg  = digitalRead(PIN_CHRG);
+  bool stdby = digitalRead(PIN_STDBY);
+
+  if (chrg == LOW)  return CARGA_CHARGING;
+  if (stdby == LOW) return CARGA_FULL;
+
+  return CARGA_IDLE;
+}
+
 float leerBateria() {
+
   long suma = 0;
 
   for (int i = 0; i < 100; i++) {
-    suma += analogRead(pinADC_BAT);
+    suma += analogRead(PIN_ADC_BAT);
     delay(2);
   }
 
@@ -62,24 +84,23 @@ float leerBateria() {
   return voltBat;
 }
 
-/* =======================
-   VOLTAJE → PORCENTAJE
-   ======================= */
+/* =========================================================
+   CAPA DE PROCESAMIENTO
+   ========================================================= */
 int voltPor(float v) {
+
   float p;
 
-  if (v >= maxBat) p = 100;
-  else if (v <= minBat) p = 0;
-  else p = (v - minBat) * 100.0 / (maxBat - minBat);
+  if (v >= BAT_MAX_VOLT)      p = 100;
+  else if (v <= BAT_MIN_VOLT) p = 0;
+  else p = (v - BAT_MIN_VOLT) * 100.0 / (BAT_MAX_VOLT - BAT_MIN_VOLT);
 
   int por5 = round(p / 5.0) * 5;
   return constrain(por5, 0, 100);
 }
 
-/* =======================
-   PORCENTAJE ESTABLE
-   ======================= */
 int voltPorEstable(float v) {
+
   static int porcentajeActual = -1;
   static float vRef = 0;
 
@@ -99,46 +120,41 @@ int voltPorEstable(float v) {
   return porcentajeActual;
 }
 
-/* =======================
-   ESTADO DEL SISTEMA
-   ======================= */
 EstadoSistema obtenerEstadoSistema(int porcentaje) {
 
-  if (porcentaje <= 30)
-    return EST_LOW;
+  if (porcentaje <= 30) return EST_LOW;
+  if (porcentaje >= 95) return EST_FULL;
 
-  if (porcentaje >= 95)
-    return EST_FULL;
-
-  if (humEncendido)
-    return EST_RUN;
+  if (humEncendido) return EST_RUN;
 
   return EST_READY;
 }
 
-/* =======================
-   DISPARO HUMIDIFICADOR
-   ======================= */
+/* =========================================================
+   CAPA DE ACTUACIÓN
+   ========================================================= */
 void dispararHumidificador() {
-  digitalWrite(pinHum, LOW);
+
+  digitalWrite(PIN_HUM, LOW);
   delay(10);
-  digitalWrite(pinHum, HIGH);
+  digitalWrite(PIN_HUM, HIGH);
 }
 
-/* =======================
-   ICONO DE BATERÍA
-   ======================= */
+/* =========================================================
+   CAPA DE INTERFAZ
+   ========================================================= */
 void dibujarIconoBateria(int porcentaje) {
-  int x = 4;
-  int y = 6;
-  int w = 48;
-  int h = 20;
+
+  const int x = 4;
+  const int y = 6;
+  const int w = 48;
+  const int h = 20;
 
   display.drawRect(x, y, w, h, SSD1306_WHITE);
   display.fillRect(x + w, y + 6, 3, 8, SSD1306_WHITE);
 
-  int margen = 2;
-  int anchoUtil = w - 2 * margen;
+  const int margen = 2;
+  const int anchoUtil = w - 2 * margen;
   int fill = map(porcentaje, 0, 100, 0, anchoUtil);
 
   display.fillRect(
@@ -150,13 +166,12 @@ void dibujarIconoBateria(int porcentaje) {
   );
 }
 
-/* =======================
-   TEXTO DE ESTADO
-   ======================= */
-void dibujarTextoEstado(EstadoSistema estado) {
+void dibujarTextoEstado(EstadoSistema estado, EstadoCarga carga) {
+
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
 
+  // ===== Estado del sistema (principal) =====
   switch (estado) {
 
     case EST_READY:
@@ -183,23 +198,37 @@ void dibujarTextoEstado(EstadoSistema estado) {
       display.print("LOW");
       break;
   }
+
+  // ===== Estado de carga (secundario) =====
+  if (carga == CARGA_CHARGING) {
+    display.setCursor(68, 0);
+    display.print("CHG");
+  }
+
+  if (carga == CARGA_FULL) {
+    display.setCursor(68, 0);
+    display.print("FULL");
+  }
 }
 
-/* =======================
+/* =========================================================
    SETUP
-   ======================= */
+   ========================================================= */
 void setup() {
 
   analogReadResolution(12);
-  analogSetPinAttenuation(pinADC_BAT, ADC_11db);
+  analogSetPinAttenuation(PIN_ADC_BAT, ADC_11db);
 
-  pinMode(pinTTP, INPUT_PULLDOWN);
-  pinMode(pinHum, OUTPUT);
-  digitalWrite(pinHum, HIGH);
+  pinMode(PIN_TTP, INPUT_PULLDOWN);
+  pinMode(PIN_HUM, OUTPUT);
+  digitalWrite(PIN_HUM, HIGH);
+
+  pinMode(PIN_CHRG, INPUT_PULLUP);
+  pinMode(PIN_STDBY, INPUT_PULLUP);
 
   Serial.begin(115200);
 
-  Wire.begin(pinSDA, pinSCL);
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
   Wire.setClock(100000);
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
@@ -207,15 +236,14 @@ void setup() {
   display.display();
 }
 
-/* =======================
+/* =========================================================
    LOOP
-   ======================= */
+   ========================================================= */
 void loop() {
 
-  // ===== TTP223 =====
-  bool ttpActual = digitalRead(pinTTP);
+  // ===== TTP =====
+  bool ttpActual = digitalRead(PIN_TTP);
 
-  // Flanco descendente
   if (ttpAnterior == HIGH && ttpActual == LOW) {
     humEncendido = !humEncendido;
     dispararHumidificador();
@@ -223,18 +251,21 @@ void loop() {
 
   ttpAnterior = ttpActual;
 
-  // ===== BATERÍA + OLED =====
+  // ===== BATERÍA =====
   if (!humEncendido) {
     vBatFiltrada = leerBateria();
   }
 
   int porcentaje = voltPorEstable(vBatFiltrada);
 
+  // ===== ESTADOS =====
+  EstadoCarga carga = obtenerEstadoCarga();
   EstadoSistema estado = obtenerEstadoSistema(porcentaje);
 
+  // ===== DISPLAY =====
   display.clearDisplay();
   dibujarIconoBateria(porcentaje);
-  dibujarTextoEstado(estado);
+  dibujarTextoEstado(estado, carga);
   display.display();
 
   delay(200);
